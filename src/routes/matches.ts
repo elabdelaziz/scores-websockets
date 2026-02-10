@@ -57,6 +57,10 @@ matchRouter.post("/", async (req, res) => {
         status: getMatchStatus(new Date(startTime), new Date(endTime)),
       })
       .returning();
+
+    if (res.app.locals.broadcastMatchCreated) {
+      res.app.locals.broadcastMatchCreated(event);
+    }
     return res.status(201).json(event);
   } catch (error) {
     return res.status(500).json({
