@@ -6,7 +6,7 @@ export const MATCH_STATUS = {
   FINISHED: "finished",
 } as const;
 
-const dateSchema = z.coerce.date();
+const dateSchema = z.iso.datetime();
 
 export const listMatchesQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
