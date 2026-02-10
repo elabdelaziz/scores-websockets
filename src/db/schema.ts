@@ -33,6 +33,8 @@ export const matches = pgTable("matches", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export type Match = typeof matches.$inferSelect;
+
 /**
  * Commentary Table
  */
