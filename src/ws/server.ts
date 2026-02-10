@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
 import { Match } from "../db/schema.ts";
+import { wsArcjet } from "../security/arcjet.ts";
 
 // Augment the WebSocket type to include the custom `isAlive` property
 // used by the heartbeat/ping-pong pattern to detect dead connections.
@@ -26,9 +27,34 @@ function broadcast(wss: WebSocketServer, payload: any) {
 
 export function attachWebSocketServer(server: http.Server) {
   const wss = new WebSocketServer({
-    server,
-    path: "/ws",
+    noServer: true,
     maxPayload: 1024 * 1024,
+  });
+
+  server.on("upgrade", async (req, socket, head) => {
+    if (!req.url?.startsWith("/ws")) return;
+
+    if (wsArcjet) {
+      try {
+        const decision = await wsArcjet.protect(req);
+        if (decision.isDenied()) {
+          const status = decision.reason.isRateLimit()
+            ? "429 Too Many Requests"
+            : "403 Forbidden";
+          socket.write(`HTTP/1.1 ${status}\r\n\r\n`);
+          socket.destroy();
+          return;
+        }
+      } catch (error) {
+        console.error("ws connection error", error);
+        socket.destroy();
+        return;
+      }
+    }
+
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
   });
 
   wss.on("connection", (socket) => {
