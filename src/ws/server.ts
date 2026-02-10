@@ -32,8 +32,11 @@ export function attachWebSocketServer(server: http.Server) {
   });
 
   server.on("upgrade", async (req, socket, head) => {
-    if (!req.url?.startsWith("/ws")) return;
-
+    if (!req.url?.startsWith("/ws")) {
+      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+      socket.destroy();
+      return;
+    }
     if (wsArcjet) {
       try {
         const decision = await wsArcjet.protect(req);
@@ -51,7 +54,6 @@ export function attachWebSocketServer(server: http.Server) {
         return;
       }
     }
-
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit("connection", ws, req);
     });
