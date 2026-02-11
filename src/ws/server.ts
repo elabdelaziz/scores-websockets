@@ -3,11 +3,76 @@ import http from "http";
 import { Match } from "../db/schema.ts";
 import { wsArcjet } from "../security/arcjet.ts";
 
+const matchSubscribers = new Map<string, Set<WebSocket>>();
+
+function subscribeToMatch(matchId: string, socket: WebSocket) {
+  if (!matchSubscribers.has(matchId)) {
+    matchSubscribers.set(matchId, new Set());
+  }
+  matchSubscribers.get(matchId)?.add(socket);
+}
+
+function unsubscribeFromMatch(matchId: string, socket: WebSocket) {
+  const subscribers = matchSubscribers.get(matchId);
+  if (subscribers) {
+    subscribers.delete(socket);
+    if (subscribers.size === 0) {
+      matchSubscribers.delete(matchId);
+    }
+  }
+}
+
+function cleanupSubscriptions(socket: WebSocket) {
+  for (const matchId of socket.subscriptions) {
+    unsubscribeFromMatch(matchId, socket);
+  }
+}
+
+function broadcastToMatch(matchId: string, payload: any) {
+  const subscribers = matchSubscribers.get(matchId);
+  if (subscribers) {
+    const message = JSON.stringify(payload);
+    subscribers.forEach((socket) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(message);
+      }
+    });
+  }
+}
+
+function handleMessage(socket: WebSocket, data: any) {
+  let message;
+  try {
+    message = JSON.parse(data.toString());
+  } catch (error) {
+    sendJson(socket, { type: "error", data: { message: "Invalid message" } });
+  }
+  if (message.type === "subscribe" && Number.isInteger(message.matchId)) {
+    subscribeToMatch(message.matchId, socket);
+    socket.subscriptions.add(message.matchId);
+    sendJson(socket, {
+      type: "subscribed",
+      matchId: message.matchId,
+    });
+    return;
+  }
+  if (message.type === "unsubscribe" && Number.isInteger(message.matchId)) {
+    unsubscribeFromMatch(message.matchId, socket);
+    socket.subscriptions.delete(message.matchId);
+    sendJson(socket, {
+      type: "unsubscribed",
+      matchId: message.matchId,
+    });
+    return;
+  }
+}
+
 // Augment the WebSocket type to include the custom `isAlive` property
 // used by the heartbeat/ping-pong pattern to detect dead connections.
 declare module "ws" {
   interface WebSocket {
     isAlive: boolean;
+    subscriptions: Set<string>;
   }
 }
 // ensure the socket is open before sending json.stringify
@@ -17,7 +82,7 @@ function sendJson(socket: WebSocket, payload: any) {
   }
 }
 
-function broadcast(wss: WebSocketServer, payload: any) {
+function broadcastToAll(wss: WebSocketServer, payload: any) {
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify(payload));
@@ -65,9 +130,13 @@ export function attachWebSocketServer(server: http.Server) {
       socket.isAlive = true;
     });
 
+    socket.subscriptions = new Set();
+
     sendJson(socket, { type: "welcome" });
 
-    socket.on("error", console.error);
+    socket.on("message", (data) => handleMessage(socket, data));
+    socket.on("close", () => cleanupSubscriptions(socket));
+    socket.on("error", () => socket.terminate());
   });
 
   const interval = setInterval(() => {
@@ -81,8 +150,12 @@ export function attachWebSocketServer(server: http.Server) {
   wss.on("close", () => clearInterval(interval));
 
   function broadcastMatchCreated(match: Match) {
-    broadcast(wss, { type: "match_created", data: match });
+    broadcastToAll(wss, { type: "match_created", data: match });
   }
 
-  return { broadcastMatchCreated };
+  function broadcastCommentary(matchId: string, comment: string) {
+    broadcastToMatch(matchId, { type: "commentary", data: comment });
+  }
+
+  return { broadcastMatchCreated, broadcastCommentary };
 }
