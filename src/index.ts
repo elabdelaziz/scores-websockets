@@ -1,5 +1,6 @@
 import express from "express";
 import { matchRouter } from "./routes/matches.ts";
+import { commentaryRouter } from "./routes/commentary.ts";
 import http from "http";
 import { attachWebSocketServer } from "./ws/server.ts";
 import { securityMiddleware } from "./security/arcjet.ts";
@@ -21,12 +22,15 @@ app.get("/", (req, res) => {
 });
 
 app.use("/matches", matchRouter);
+app.use("/matches/:id/commentary", commentaryRouter);
 
 // explanation: destructuring the broadcastMatchCreated function from the attachWebSocketServer function so we can use it to broadcast match events to connected clients
-const { broadcastMatchCreated } = attachWebSocketServer(server);
+const { broadcastMatchCreated, broadcastCommentary } =
+  attachWebSocketServer(server);
 
 // explanation: app.locals is an object that is available to all routes, we can use it to store the broadcastMatchCreated function so we can access it in the match router
 app.locals.broadcastMatchCreated = broadcastMatchCreated;
+app.locals.broadcastCommentary = broadcastCommentary;
 
 // Start the server
 server.listen(PORT, HOST, () => {
