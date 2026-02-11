@@ -46,10 +46,12 @@ function handleMessage(socket: WebSocket, data: any) {
     message = JSON.parse(data.toString());
   } catch (error) {
     sendJson(socket, { type: "error", data: { message: "Invalid message" } });
+    return;
   }
   if (message.type === "subscribe" && Number.isInteger(message.matchId)) {
-    subscribeToMatch(message.matchId, socket);
-    socket.subscriptions.add(message.matchId);
+    const matchIdStr = String(message.matchId);
+    subscribeToMatch(matchIdStr, socket);
+    socket.subscriptions.add(matchIdStr);
     sendJson(socket, {
       type: "subscribed",
       matchId: message.matchId,
@@ -57,8 +59,9 @@ function handleMessage(socket: WebSocket, data: any) {
     return;
   }
   if (message.type === "unsubscribe" && Number.isInteger(message.matchId)) {
-    unsubscribeFromMatch(message.matchId, socket);
-    socket.subscriptions.delete(message.matchId);
+    const matchIdStr = String(message.matchId);
+    unsubscribeFromMatch(matchIdStr, socket);
+    socket.subscriptions.delete(matchIdStr);
     sendJson(socket, {
       type: "unsubscribed",
       matchId: message.matchId,
