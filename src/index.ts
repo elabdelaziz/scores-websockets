@@ -8,6 +8,10 @@ import { securityMiddleware } from "./security/arcjet.ts";
 const PORT = Number(process.env.PORT || 8000);
 const HOST = process.env.HOST || "0.0.0.0";
 
+// Demo mode is disabled by default for production safety
+// Enable with DEMO_MODE=true environment variable
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
 const app = express();
 const server = http.createServer(app);
 
@@ -18,11 +22,21 @@ app.use(securityMiddleware());
 
 // Root GET route
 app.get("/", (req, res) => {
-  res.json({ message: "Welcome to the Sportz API!" });
+  res.json({
+    message: "Welcome to the Sportz API!",
+    demoMode: DEMO_MODE ? "enabled" : "disabled",
+  });
 });
 
 app.use("/matches", matchRouter);
 app.use("/matches/:id/commentary", commentaryRouter);
+
+// Demo routes - only available when DEMO_MODE=true
+if (DEMO_MODE) {
+  const { demoRouter } = await import("./routes/demo.ts");
+  app.use("/demo", demoRouter);
+  console.log("🎮 Demo mode enabled - /demo routes available");
+}
 
 // explanation: destructuring the broadcastMatchCreated function from the attachWebSocketServer function so we can use it to broadcast match events to connected clients
 const { broadcastMatchCreated, broadcastCommentary } =
